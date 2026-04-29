@@ -45,6 +45,12 @@ This tree structure makes it easy to traverse, transform, and reason about formu
 | `Implies` | `->` | `p -> q` | Implication — "if p then q" |
 | `Biconditional` | `<->` | `p <-> q` | "p if and only if q" |
 
+### `Not` eliminates double negations automatically
+
+`Not` uses `__new__` to intercept construction before the object is created. If you write `Not(Not(p))`, Python never creates a double-negation object — it returns `p` directly. This means `~~p` is always identical to `p` everywhere in the system, with no separate normalisation step needed.
+
+This matters because `revise(B, ~p)` internally contracts by `~~p` (via the Levi identity). Without this normalisation, `~~p` would not be recognised as a unit literal and the fast contraction path would be skipped.
+
 ### Design decision: why classes instead of tuples or strings?
 
 We could have stored formulas as tuples like `("->", "p", "q")`. The reason we use classes instead:

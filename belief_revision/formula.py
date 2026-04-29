@@ -53,7 +53,15 @@ class Atom(Formula):
 
 
 class Not(Formula):
+    def __new__(cls, sub: Formula):
+        # Eliminate double negation: ~~p → p
+        if isinstance(sub, Not):
+            return sub.sub
+        return super().__new__(cls)
+
     def __init__(self, sub: Formula):
+        if isinstance(sub, Not):
+            return  # already handled by __new__; sub.sub is the real object
         self.sub = sub
 
     def _key(self):

@@ -25,7 +25,7 @@ If B⊥φ is empty (φ is a tautology or B is empty), we return B unchanged
 from __future__ import annotations
 from typing import List, FrozenSet, Iterable
 
-from .formula import Formula, parse
+from .formula import Formula, parse, Atom, Not
 from .belief_base import BeliefBase, Belief
 from .entailment import entails
 
@@ -178,15 +178,33 @@ def _select(remainders: List[FrozenSet[Belief]]) -> List[FrozenSet[Belief]]:
 # Public contraction API
 # ---------------------------------------------------------------------------
 
+def _is_unit_literal(formula: Formula) -> bool:
+    """Return True if formula is a single literal (Atom or Not(Atom))."""
+    return isinstance(formula, Atom) or (isinstance(formula, Not) and isinstance(formula.sub, Atom))
+
+
 def contract(bb: BeliefBase, formula: Formula | str) -> BeliefBase:
     """
     Compute and return a NEW belief base: B ÷ formula.
 
     Uses partial meet contraction with priority-based selection.
     The original belief base is NOT modified.
+
+    Fast path: when contracting by a unit literal (atom or negated atom),
+    the only belief in a unit-clause base that entails it is the literal
+    itself.  We skip the 2^n subset enumeration and simply remove that
+    belief directly.  This is semantically equivalent to full partial-meet
+    contraction for unit-literal belief bases and runs in O(n) instead of O(2^n).
     """
     if isinstance(formula, str):
         formula = parse(formula)
+
+    # Normalize away double negations: ~~p → p, ~~~p → ~p, etc.
+    # revise(bb, ~p) calls contract(bb, ~~p) via Levi identity; without this
+    # normalization ~~p is not recognised as a unit literal and the fast path
+    # below would be skipped, triggering the O(2^n) subset enumeration.
+    while isinstance(formula, Not) and isinstance(formula.sub, Not):
+        formula = formula.sub.sub
 
     beliefs = bb.beliefs  # sorted by priority desc
 
@@ -196,6 +214,19 @@ def contract(bb: BeliefBase, formula: Formula | str) -> BeliefBase:
         for b in beliefs:
             result.add(b.formula, b.priority)
         return result
+
+    # ── Fast path for unit literals ──────────────────────────────────────────
+    if _is_unit_literal(formula):
+        # Remove every belief that individually entails formula.
+        # For unit literals this is equivalent to full partial-meet contraction
+        # because a belief b needs to be in every remainder set iff {b} alone
+        # does NOT entail φ.  Checking per-belief is O(n) vs O(2^n).
+        result = BeliefBase()
+        for b in beliefs:
+            if not entails([b.formula], formula):
+                result.add(b.formula, b.priority)
+        return result
+    # ────────────────────────────────────────────────────────────────────────
 
     # Compute remainder sets
     remainders = compute_remainder_sets(beliefs, formula)

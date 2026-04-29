@@ -77,7 +77,16 @@ Finding all remainder sets is computationally expensive — in the worst case we
 
 The code uses a **bitmasking approach**: iterate over all non-empty subsets, keep those that don't entail φ, then filter for maximality (drop any subset that is a strict subset of another non-entailing subset).
 
-### Design decision: why enumerate all subsets?
+### Fast path for unit literals
+
+When φ is a single literal (an atom like `p`, or a negated atom like `~p`), the $2^n$ enumeration is unnecessary. A belief `b` must appear in every remainder set if and only if `{b}` alone does **not** entail φ. This is because:
+
+- Any belief that individually entails φ must be excluded from every remainder set (otherwise the set would entail φ).
+- Any belief that does not individually entail φ can always be included in some maximal non-entailing subset.
+
+So contraction by a unit literal reduces to: **remove every belief that individually entails φ**. This runs in $O(n)$ instead of $O(2^n)$, which is critical when the belief base is large (e.g. in Mastermind after many turns).
+
+### Design decision: why enumerate all subsets for complex formulas?
 
 For small belief bases (as in this assignment), this is perfectly fast. The alternative — a smarter recursive algorithm — was also implemented but the exhaustive approach was kept as the public function because:
 
@@ -95,4 +104,5 @@ For small belief bases (as in this assignment), this is perfectly fast. The alte
 | Priority-sum as selection function | Keeps the most entrenched beliefs; simple and intuitive |
 | Intersection of selected remainder sets | Only keeps beliefs all best options agree on — conservative and safe |
 | Vacuous check first | Short-circuits the expensive subset computation when unnecessary |
-| Bitmask enumeration of subsets | Simple, obviously correct; fast enough for small belief bases |
+| Fast path for unit literals | Contraction by a single literal is $O(n)$ — avoids $2^n$ enumeration |
+| Bitmask enumeration for complex formulas | Simple, obviously correct; fast enough for small belief bases |
