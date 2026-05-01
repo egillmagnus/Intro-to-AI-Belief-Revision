@@ -7,151 +7,64 @@ as possible.
 
 Algorithm (from the course slides / AGM theory):
 
-  1. Compute B⊥φ  — the set of all MAXIMAL subsets of B that do NOT entail φ.
-     (These are called "remainder sets".)
+1. Compute B⊥φ — the set of all MAXIMAL subsets of B that do NOT entail φ.
+   (These are called "remainder sets".)
 
-  2. Apply a selection function γ to choose a non-empty sub-collection of B⊥φ.
-     We use a priority-based selection function:
-       γ(B⊥φ) = those remainder sets that have the maximum total priority sum,
-     i.e., we prefer to keep the most entrenched beliefs.
+2. Apply a selection function γ to choose a non-empty sub-collection of B⊥φ.
+   We use a priority-based selection function:
+   γ(B⊥φ) = those remainder sets that have the maximum total priority sum,
+   i.e., we prefer to keep the most entrenched beliefs.
 
-  3. Return the intersection ∩ γ(B⊥φ).
+3. Return the intersection ∩ γ(B⊥φ).
 
 If B does not entail φ (vacuous case) the original base is returned unchanged.
-If B⊥φ is empty (φ is a tautology or B is empty), we return B unchanged
-(we cannot remove a tautology).
+If B⊥φ is empty (φ is a tautology or B is empty), we return an empty base.
 """
 
 from __future__ import annotations
-from typing import List, FrozenSet, Iterable
+from typing import List, FrozenSet
+from itertools import combinations
 
-from .formula import Formula, parse, Atom, Not
+from .formula import Formula, parse
 from .belief_base import BeliefBase, Belief
 from .entailment import entails
 
 
 # ---------------------------------------------------------------------------
-# Helper: compute all maximal non-entailing subsets  (B⊥φ)
+# Compute all maximal non-entailing subsets (B⊥φ)
 # ---------------------------------------------------------------------------
 
-def _remainder_sets(beliefs: List[Belief], formula: Formula) -> List[FrozenSet[Belief]]:
+def _compute_remainder_sets(beliefs: List[Belief], formula: Formula) -> List[FrozenSet[Belief]]:
     """
-    Return B⊥formula: all maximal subsets of `beliefs` that do not entail `formula`.
+    Return B⊥formula: all maximal subsets of beliefs that do NOT entail formula.
 
-    Uses a generate-and-test approach:
-      - Start from the full set, iteratively try removing each belief.
-      - A subset S is in B⊥φ iff:
-          (a) S does not entail φ, AND
-          (b) Adding any removed belief back would make it entail φ.
-
-    We use a recursive power-set search pruned by maximality.
+    Approach: enumerate all subsets from largest to smallest.
+    Keep a subset if:
+      (a) it does not entail formula, AND
+      (b) it is not already a subset of a known remainder set (maximality).
     """
-    formulas_only = [b.formula for b in beliefs]
-
-    # Quick check: if the full base does not entail φ, return {full set}
-    if not entails(formulas_only, formula):
-        return [frozenset(beliefs)]
-
-    remainders: List[FrozenSet[Belief]] = []
-    _find_remainders(beliefs, formula, frozenset(), 0, remainders)
-    return remainders
-
-
-def _find_remainders(
-    beliefs: List[Belief],
-    formula: Formula,
-    current: FrozenSet[Belief],
-    start_idx: int,
-    results: List[FrozenSet[Belief]],
-) -> None:
-    """
-    Recursive backtracking to find all maximal non-entailing subsets.
-
-    We build subsets by deciding for each belief whether to include it.
-    We only record a subset when:
-      - It does not entail formula
-      - No superset (within beliefs) also has this property (maximality).
-
-    Approach: start from the empty set and grow it by adding one belief at a time.
-    We prune: if adding a belief causes entailment of formula, skip that belief.
-    """
-    # Try adding beliefs from start_idx onward
-    for i in range(start_idx, len(beliefs)):
-        candidate = current | {beliefs[i]}
-        candidate_formulas = [b.formula for b in candidate]
-        if entails(candidate_formulas, formula):
-            continue  # adding this belief causes entailment; skip
-
-        # candidate does not entail formula — try to extend it
-        extended = False
-        for j in range(i + 1, len(beliefs)):
-            next_candidate = candidate | {beliefs[j]}
-            next_formulas = [b.formula for b in next_candidate]
-            if not entails(next_formulas, formula):
-                # Can still grow — recurse
-                _find_remainders(beliefs, formula, candidate, i + 1, results)
-                extended = True
-                break
-
-        if not extended:
-            # Try all further additions — if none can be added, it's maximal
-            can_extend = False
-            for j in range(len(beliefs)):
-                if beliefs[j] in candidate:
-                    continue
-                next_candidate = candidate | {beliefs[j]}
-                next_formulas = [b.formula for b in next_candidate]
-                if not entails(next_formulas, formula):
-                    can_extend = True
-                    break
-            if not can_extend:
-                # Maximal non-entailing subset found
-                if candidate not in results:
-                    results.append(candidate)
-
-    # Also check if the current set itself (without adding more) is maximal
-    # This handles the case where we've processed all indices
-    if start_idx >= len(beliefs) and current:
-        current_formulas = [b.formula for b in current]
-        if not entails(current_formulas, formula):
-            if current not in results:
-                results.append(current)
-
-
-def compute_remainder_sets(beliefs: List[Belief], formula: Formula) -> List[FrozenSet[Belief]]:
-    """
-    Public function: compute B⊥formula.
-    Returns a list of frozensets of Belief objects.
-    Each frozenset is a maximal subset of beliefs that does not entail formula.
-    """
-    if not beliefs:
-        return []
-
-    # Check vacuous case first
-    formulas = [b.formula for b in beliefs]
-    if not entails(formulas, formula):
-        return [frozenset(beliefs)]
-
-    # Full computation via generate-and-test
-    # We enumerate all subsets of beliefs (excluding full set which entails φ),
-    # keep those that don't entail φ, and retain only the maximal ones.
     n = len(beliefs)
-    all_non_entailing: List[FrozenSet[Belief]] = []
+    remainder_sets: List[FrozenSet[Belief]] = []
 
-    for mask in range(1, 1 << n):  # all non-empty subsets
-        subset = frozenset(beliefs[i] for i in range(n) if mask & (1 << i))
-        subset_formulas = [b.formula for b in subset]
-        if not entails(subset_formulas, formula):
-            all_non_entailing.append(subset)
+    # Try subsets from largest to smallest so we find maximal ones first
+    for size in range(n, 0, -1):
+        for subset_tuple in combinations(beliefs, size):
+            subset = frozenset(subset_tuple)
+            subset_formulas = [b.formula for b in subset]
 
-    # Keep only maximal ones
-    maximal = []
-    for s in all_non_entailing:
-        if not any(s < t for t in all_non_entailing):
-            if s not in maximal:
-                maximal.append(s)
+            # Skip if this subset entails formula
+            if entails(subset_formulas, formula):
+                continue
 
-    return maximal if maximal else []
+            # Skip if already dominated by a known remainder set
+            # (i.e., this subset is a strict subset of something already found)
+            dominated = any(subset < existing for existing in remainder_sets)
+            if dominated:
+                continue
+
+            remainder_sets.append(subset)
+
+    return remainder_sets
 
 
 # ---------------------------------------------------------------------------
@@ -178,64 +91,33 @@ def _select(remainders: List[FrozenSet[Belief]]) -> List[FrozenSet[Belief]]:
 # Public contraction API
 # ---------------------------------------------------------------------------
 
-def _is_unit_literal(formula: Formula) -> bool:
-    """Return True if formula is a single literal (Atom or Not(Atom))."""
-    return isinstance(formula, Atom) or (isinstance(formula, Not) and isinstance(formula.sub, Atom))
-
-
 def contract(bb: BeliefBase, formula: Formula | str) -> BeliefBase:
     """
     Compute and return a NEW belief base: B ÷ formula.
 
     Uses partial meet contraction with priority-based selection.
     The original belief base is NOT modified.
-
-    Fast path: when contracting by a unit literal (atom or negated atom),
-    the only belief in a unit-clause base that entails it is the literal
-    itself.  We skip the 2^n subset enumeration and simply remove that
-    belief directly.  This is semantically equivalent to full partial-meet
-    contraction for unit-literal belief bases and runs in O(n) instead of O(2^n).
     """
     if isinstance(formula, str):
         formula = parse(formula)
 
-    # Normalize away double negations: ~~p → p, ~~~p → ~p, etc.
-    # revise(bb, ~p) calls contract(bb, ~~p) via Levi identity; without this
-    # normalization ~~p is not recognised as a unit literal and the fast path
-    # below would be skipped, triggering the O(2^n) subset enumeration.
-    while isinstance(formula, Not) and isinstance(formula.sub, Not):
-        formula = formula.sub.sub
+    beliefs = bb.beliefs  # sorted by priority descending
 
-    beliefs = bb.beliefs  # sorted by priority desc
-
-    # Vacuous check: if B does not entail φ, return B unchanged
+    # Vacuous case: if B does not entail φ, return B unchanged
     if not entails(bb.formulas, formula):
         result = BeliefBase()
         for b in beliefs:
             result.add(b.formula, b.priority)
         return result
 
-    # ── Fast path for unit literals ──────────────────────────────────────────
-    if _is_unit_literal(formula):
-        # Remove every belief that individually entails formula.
-        # For unit literals this is equivalent to full partial-meet contraction
-        # because a belief b needs to be in every remainder set iff {b} alone
-        # does NOT entail φ.  Checking per-belief is O(n) vs O(2^n).
-        result = BeliefBase()
-        for b in beliefs:
-            if not entails([b.formula], formula):
-                result.add(b.formula, b.priority)
-        return result
-    # ────────────────────────────────────────────────────────────────────────
+    # Compute all maximal non-entailing subsets
+    remainders = _compute_remainder_sets(beliefs, formula)
 
-    # Compute remainder sets
-    remainders = compute_remainder_sets(beliefs, formula)
-
+    # φ is a tautology or base is empty — return empty base
     if not remainders:
-        # φ is a tautology or base is empty — return empty base
         return BeliefBase()
 
-    # Apply selection function
+    # Apply selection function: pick highest-priority remainder sets
     selected = _select(remainders)
 
     # Take intersection of selected remainder sets
