@@ -1,98 +1,200 @@
 from belief_revision import (
-    BeliefBase, parse,
-    entails, is_consistent,
+    BeliefBase, parse, entails, is_consistent,
     contract, expand, revise,
-    run_all_tests,
 )
 
-
-def separator(title: str = ""):
-    print()
-    if title:
-        print(f"{'─' * 20}  {title}  {'─' * 20}")
-    else:
-        print("─" * 60)
+SEP = "-" * 40
 
 
-def main():
-    print("=" * 60)
-    print("  Belief Revision Engine")
-    print("  02180 Intro to AI — DTU, 2026")
-    print("=" * 60)
+def _show_bb(bb: BeliefBase) -> None:
+    beliefs = bb.beliefs
+    if not beliefs:
+        print("  (belief base is empty)")
+        return
+    print(SEP)
+    for b in beliefs:
+        print(f"  [{b.priority}]  {b.formula}")
+    print(SEP)
+    consistent = is_consistent(bb.formulas)
+    status = "consistent" if consistent else "inconsistent"
+    print(f"  {len(beliefs)} belief(s), {status}")
 
-    # -------
-    separator("STAGE 1 — Belief Base")
 
+def _show_diff(before: BeliefBase, after: BeliefBase) -> None:
+    before_set = {(str(b.formula), b.priority) for b in before.beliefs}
+    after_set  = {(str(b.formula), b.priority) for b in after.beliefs}
+    removed = before_set - after_set
+    added   = after_set  - before_set
+
+    if not removed and not added:
+        print("  (no change)")
+        return
+
+    for fs, p in sorted(removed):
+        print(f"  - [{p}]  {fs}")
+    for fs, p in sorted(added):
+        print(f"  + [{p}]  {fs}")
+
+
+HELP = """\
+Commands:
+  add <formula> [priority]      Add a belief (default priority=1)
+  remove <formula>              Remove a belief
+  show                          Show current belief base
+  entails <formula>             Check if BB |= formula
+  consistent                    Check if BB is consistent
+  contract <formula>            Contract by formula
+  expand  <formula> [priority]  Expand with formula
+  revise  <formula> [priority]  Revise by formula (Levi identity)
+  reset                         Clear the belief base
+  help                          Show this help
+  quit / exit                   Exit
+
+Formula syntax:
+  p, q, r, ...    atomic variables
+  ~p              NOT
+  p & q           AND
+  p | q           OR
+  p -> q          implication
+  p <-> q         biconditional
+  (p & q)         grouping
+
+Example session:
+  >> add p -> q 3
+  >> add p 2
+  >> entails q
+  >> revise ~p 3
+  >> show
+"""
+
+
+def _parse_formula_and_priority(raw: str):
+    # split 'p -> q 3' into formula_str and optional trailing priority
+    tokens = raw.rsplit(None, 1)
+    if len(tokens) == 2 and tokens[1].isdigit():
+        return tokens[0].strip(), int(tokens[1])
+    return raw.strip(), 1
+
+
+def run_cli():
     bb = BeliefBase()
-    bb.add("p -> q", priority=3)
-    bb.add("p",      priority=2)
-    bb.add("r -> p", priority=2)
-    bb.add("r",      priority=1)
+    print()
+    print("Belief Revision Engine")
+    print("Type 'help' for commands.")
+    print()
 
-    print(bb)
+    while True:
+        try:
+            line = input(">> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nBye!")
+            break
 
-    separator("STAGE 2 — Entailment (Resolution)")
+        if not line:
+            continue
 
-    queries = [
-        ("q",       True,  "The ground is wet (derived via p and p->q)"),
-        ("~p",      False, "It is NOT raining (contradicts p)"),
-        ("r -> q",  True,  "If Alice brings umbrella then ground is wet"),
-        ("p & q",   True,  "It rains AND ground is wet"),
-        ("p | ~p",  True,  "Tautology"),
-    ]
+        parts = line.split(None, 1)
+        cmd = parts[0].lower()
+        rest = parts[1] if len(parts) > 1 else ""
 
-    for formula_str, expected, description in queries:
-        formula = parse(formula_str)
-        result = entails(bb.formulas, formula)
-        status = "✓" if result == expected else "✗ (unexpected)"
-        print(f"  BB |= {formula_str:<15}  →  {str(result):<6}  {status}  # {description}")
+        if cmd in ("quit", "exit", "q"):
+            print("Bye!")
+            break
 
-    separator("STAGE 3 — Contraction  (Partial Meet)")
+        elif cmd == "help":
+            print(HELP)
 
-    print("Before contraction:")
-    print(bb)
+        elif cmd == "show":
+            _show_bb(bb)
 
-    # Contract by 'q' -- no longer want to believe the ground is wet
-    print("\nContracting by: q  (ground is wet)")
-    bb_contracted = contract(bb, parse("q"))
-    print("\nAfter contraction by q:")
-    print(bb_contracted)
-    print(f"\n  Still entails q?  {entails(bb_contracted.formulas, parse('q'))}")
+        elif cmd == "reset":
+            bb = BeliefBase()
+            print("Belief base cleared.")
 
-    separator("STAGE 4 — Expansion")
+        elif cmd == "consistent":
+            result = is_consistent(bb.formulas)
+            print("consistent" if result else "inconsistent")
 
-    print("Before expansion:")
-    print(bb_contracted)
+        elif cmd == "add":
+            if not rest:
+                print("Usage: add <formula> [priority]")
+                continue
+            try:
+                formula_str, priority = _parse_formula_and_priority(rest)
+                f = parse(formula_str)
+                bb.add(f, priority=priority)
+                print(f"  + [{priority}]  {f}")
+            except Exception as e:
+                print(f"Error: {e}")
 
-    # Add a new belief: ~p (it is NOT raining)
-    print("\nExpanding with: ~p  (it is not raining),  priority=3")
-    bb_expanded = expand(bb_contracted, parse("~p"), priority=3)
-    print("\nAfter expansion:")
-    print(bb_expanded)
-    print(f"\n  Consistent?  {is_consistent(bb_expanded.formulas)}")
+        elif cmd == "remove":
+            if not rest:
+                print("Usage: remove <formula>")
+                continue
+            try:
+                f = parse(rest.strip())
+                bb.remove(f)
+                print(f"  removed: {f}")
+            except Exception as e:
+                print(f"Error: {e}")
 
-    separator("FULL REVISION  (Levi Identity: B * φ = (B ÷ ¬φ) + φ)")
+        elif cmd == "entails":
+            if not rest:
+                print("Usage: entails <formula>")
+                continue
+            try:
+                f = parse(rest.strip())
+                result = entails(bb.formulas, f)
+                print(f"  BB |= {f}   {'yes' if result else 'no'}")
+            except Exception as e:
+                print(f"Error: {e}")
 
-    print("Original belief base:")
-    print(bb)
-    print("\nRevising by: ~p  (it is NOT raining)")
-    bb_revised = revise(bb, parse("~p"), priority=3)
-    print("\nRevised belief base:")
-    print(bb_revised)
-    print(f"\n  Entails ~p?   {entails(bb_revised.formulas, parse('~p'))}")
-    print(f"  Consistent?   {is_consistent(bb_revised.formulas)}")
+        elif cmd == "contract":
+            if not rest:
+                print("Usage: contract <formula>")
+                continue
+            try:
+                f = parse(rest.strip())
+                before = bb
+                bb = contract(bb, f)
+                _show_diff(before, bb)
+                _show_bb(bb)
+            except Exception as e:
+                print(f"Error: {e}")
 
-    separator("AGM POSTULATE TESTS")
+        elif cmd == "expand":
+            if not rest:
+                print("Usage: expand <formula> [priority]")
+                continue
+            try:
+                formula_str, priority = _parse_formula_and_priority(rest)
+                f = parse(formula_str)
+                before = bb
+                bb = expand(bb, f, priority=priority)
+                _show_diff(before, bb)
+                _show_bb(bb)
+            except Exception as e:
+                print(f"Error: {e}")
 
-    run_all_tests(bb, parse("~p"), formula_eq=parse("~(~~p)"))
+        elif cmd == "revise":
+            if not rest:
+                print("Usage: revise <formula> [priority]")
+                continue
+            try:
+                formula_str, priority = _parse_formula_and_priority(rest)
+                f = parse(formula_str)
+                before = bb
+                bb = revise(bb, f, priority=priority)
+                _show_diff(before, bb)
+                _show_bb(bb)
+            except Exception as e:
+                print(f"Error: {e}")
 
-    separator()
-    print("Additional test — revision by a formula consistent with the base:")
-    bb2 = BeliefBase()
-    bb2.add("a -> b", priority=2)
-    bb2.add("b -> c", priority=2)
-    run_all_tests(bb2, parse("a"))
+        else:
+            print(f"Unknown command: {cmd!r}. Type 'help' for commands.")
+
+        print()
 
 
 if __name__ == "__main__":
-    main()
+    run_cli()

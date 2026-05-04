@@ -6,7 +6,6 @@ from .entailment import entails, is_consistent
 from .belief_base import BeliefBase, Belief
 from .contraction import contract
 from .revision import expand, revise
-from .agm_tests import run_all_tests
 
 __all__ = [
     "Formula", "Atom", "Not", "And", "Or", "Implies", "Biconditional", "parse",
@@ -15,5 +14,4 @@ __all__ = [
     "BeliefBase", "Belief",
     "contract",
     "expand", "revise",
-    "run_all_tests",
 ]
