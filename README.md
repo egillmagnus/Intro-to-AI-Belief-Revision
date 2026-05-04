@@ -23,10 +23,39 @@ main.py                Demo entry point
 
 ---
 
-## Running the Demo
+## Running
+
+### Interactive agent (primary)
+
+```bash
+python cli.py
+```
+
+This launches the interactive belief revision agent. You can add beliefs, then revise, contract, or expand by typing a formula. The updated belief base is printed after each operation. Example session:
+
+```
+▶ add p -> q 3
+▶ add p 2
+▶ revise ~p 3
+  + [3] ~p
+  ─ [2] p
+BeliefBase { [3] ~p, [3] p -> q }
+```
+
+Type `help` for a list of commands.
+
+### Scripted demo
 
 ```bash
 python main.py
+```
+
+Runs a fixed demonstration of all four stages (belief base → entailment → contraction → expansion → revision → AGM tests) and prints the results.
+
+### AGM postulate tests only
+
+```bash
+python run_tests.py
 ```
 
 ---

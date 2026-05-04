@@ -1,17 +1,3 @@
-"""
-CNF (Conjunctive Normal Form) conversion.
-
-A CNF formula is represented as a frozenset of clauses.
-A clause is a frozenset of literals.
-A literal is a string: 'p' for positive atom p, '~p' for its negation.
-
-Conversion steps (from the course slides):
-  1. Eliminate biconditionals:  A <-> B  =>  (A -> B) & (B -> A)
-  2. Eliminate implications:    A -> B   =>  ~A | B
-  3. Push negation inward using De Morgan's laws + double negation elimination
-  4. Distribute OR over AND (to get CNF)
-"""
-
 from __future__ import annotations
 from typing import FrozenSet, Set
 from .formula import Formula, Atom, Not, And, Or, Implies, Biconditional
@@ -20,12 +6,7 @@ Clause = FrozenSet[str]
 CNF = FrozenSet[Clause]
 
 
-# ---------------------------------------------------------------------------
-# Step helpers
-# ---------------------------------------------------------------------------
-
 def _elim_biconditional(f: Formula) -> Formula:
-    """Recursively eliminate all <->."""
     if isinstance(f, Atom):
         return f
     if isinstance(f, Not):
@@ -44,7 +25,6 @@ def _elim_biconditional(f: Formula) -> Formula:
 
 
 def _elim_implication(f: Formula) -> Formula:
-    """Recursively eliminate all ->."""
     if isinstance(f, Atom):
         return f
     if isinstance(f, Not):
@@ -61,22 +41,19 @@ def _elim_implication(f: Formula) -> Formula:
 
 
 def _push_negation_inward(f: Formula) -> Formula:
-    """Push all ~ to be directly over atoms (NNF)."""
+    # De Morgan + double-neg elimination to NNF
     if isinstance(f, Atom):
         return f
     if isinstance(f, Not):
         sub = f.sub
         if isinstance(sub, Atom):
-            return f  # ~atom stays
+            return f
         if isinstance(sub, Not):
-            # ~~A => A
             return _push_negation_inward(sub.sub)
         if isinstance(sub, And):
-            # ~(A & B) => (~A | ~B)
             return Or(_push_negation_inward(Not(sub.left)),
                       _push_negation_inward(Not(sub.right)))
         if isinstance(sub, Or):
-            # ~(A | B) => (~A & ~B)
             return And(_push_negation_inward(Not(sub.left)),
                        _push_negation_inward(Not(sub.right)))
         raise TypeError(f"Unexpected node under Not: {type(sub)}")
@@ -88,7 +65,6 @@ def _push_negation_inward(f: Formula) -> Formula:
 
 
 def _distribute_or_over_and(f: Formula) -> Formula:
-    """Convert NNF formula to CNF by distributing | over &."""
     if isinstance(f, Atom) or isinstance(f, Not):
         return f
     if isinstance(f, And):
@@ -108,12 +84,9 @@ def _distribute_or_over_and(f: Formula) -> Formula:
     raise TypeError(f"Unexpected node in CNF distribution: {type(f)}")
 
 
-# ---------------------------------------------------------------------------
-# Extract clauses from a CNF formula tree
-# ---------------------------------------------------------------------------
+# Extract clauses from the CNF tree
 
 def _to_literal(f: Formula) -> str:
-    """Convert an atom or ~atom to a literal string."""
     if isinstance(f, Atom):
         return f.name
     if isinstance(f, Not) and isinstance(f.sub, Atom):
@@ -122,31 +95,18 @@ def _to_literal(f: Formula) -> str:
 
 
 def _collect_disjuncts(f: Formula) -> Set[str]:
-    """Collect all literals from a disjunction (one clause)."""
     if isinstance(f, Or):
         return _collect_disjuncts(f.left) | _collect_disjuncts(f.right)
     return {_to_literal(f)}
 
 
 def _collect_clauses(f: Formula) -> CNF:
-    """Collect all clauses from a conjunction of clauses."""
     if isinstance(f, And):
         return _collect_clauses(f.left) | _collect_clauses(f.right)
-    # Must be a single clause (disjunction of literals or a literal)
     return frozenset([frozenset(_collect_disjuncts(f))])
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
 def to_cnf(f: Formula) -> CNF:
-    """
-    Convert a propositional formula to CNF.
-    Returns a frozenset of clauses, each clause a frozenset of literal strings.
-    An empty frozenset of clauses means the formula is a tautology (True).
-    A clause that is an empty frozenset means it is unsatisfiable (False).
-    """
     f = _elim_biconditional(f)
     f = _elim_implication(f)
     f = _push_negation_inward(f)
@@ -155,14 +115,13 @@ def to_cnf(f: Formula) -> CNF:
 
 
 def negate_literal(lit: str) -> str:
-    """Return the negation of a literal string."""
     if lit.startswith('~'):
         return lit[1:]
     return f"~{lit}"
 
 
 def is_tautological_clause(clause: Clause) -> bool:
-    """A clause is a tautology if it contains both p and ~p for some p."""
+    # a clause containing both p and ~p is always true
     for lit in clause:
         if negate_literal(lit) in clause:
             return True

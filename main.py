@@ -1,15 +1,3 @@
-"""
-Belief Revision Engine — Demo / Entry Point
-
-Demonstrates all four stages of the assignment:
-  1. Belief Base
-  2. Logical Entailment (resolution)
-  3. Contraction (partial meet)
-  4. Expansion
-  + Revision (Levi Identity)
-  + AGM Postulate verification
-"""
-
 from belief_revision import (
     BeliefBase, parse,
     entails, is_consistent,
@@ -32,26 +20,17 @@ def main():
     print("  02180 Intro to AI — DTU, 2026")
     print("=" * 60)
 
-    # ---------------------------------------------------------------
-    # Stage 1: Build a Belief Base
-    # ---------------------------------------------------------------
+    # -------
     separator("STAGE 1 — Belief Base")
 
     bb = BeliefBase()
-    # p: "It is raining"
-    # q: "The ground is wet"
-    # r: "Alice brings an umbrella"
-    # Beliefs with priorities (higher = more entrenched)
-    bb.add("p -> q", priority=3)   # If it rains, the ground is wet
-    bb.add("p",      priority=2)   # It is raining
-    bb.add("r -> p", priority=2)   # If Alice brings an umbrella, it rains
-    bb.add("r",      priority=1)   # Alice brings an umbrella
+    bb.add("p -> q", priority=3)
+    bb.add("p",      priority=2)
+    bb.add("r -> p", priority=2)
+    bb.add("r",      priority=1)
 
     print(bb)
 
-    # ---------------------------------------------------------------
-    # Stage 2: Logical Entailment
-    # ---------------------------------------------------------------
     separator("STAGE 2 — Entailment (Resolution)")
 
     queries = [
@@ -68,24 +47,18 @@ def main():
         status = "✓" if result == expected else "✗ (unexpected)"
         print(f"  BB |= {formula_str:<15}  →  {str(result):<6}  {status}  # {description}")
 
-    # ---------------------------------------------------------------
-    # Stage 3: Contraction
-    # ---------------------------------------------------------------
     separator("STAGE 3 — Contraction  (Partial Meet)")
 
     print("Before contraction:")
     print(bb)
 
-    # Contract by 'q' — we no longer want to believe the ground is wet
+    # Contract by 'q' -- no longer want to believe the ground is wet
     print("\nContracting by: q  (ground is wet)")
     bb_contracted = contract(bb, parse("q"))
     print("\nAfter contraction by q:")
     print(bb_contracted)
     print(f"\n  Still entails q?  {entails(bb_contracted.formulas, parse('q'))}")
 
-    # ---------------------------------------------------------------
-    # Stage 4: Expansion
-    # ---------------------------------------------------------------
     separator("STAGE 4 — Expansion")
 
     print("Before expansion:")
@@ -98,9 +71,6 @@ def main():
     print(bb_expanded)
     print(f"\n  Consistent?  {is_consistent(bb_expanded.formulas)}")
 
-    # ---------------------------------------------------------------
-    # Full Revision (Levi Identity)
-    # ---------------------------------------------------------------
     separator("FULL REVISION  (Levi Identity: B * φ = (B ÷ ¬φ) + φ)")
 
     print("Original belief base:")
@@ -112,15 +82,8 @@ def main():
     print(f"\n  Entails ~p?   {entails(bb_revised.formulas, parse('~p'))}")
     print(f"  Consistent?   {is_consistent(bb_revised.formulas)}")
 
-    # ---------------------------------------------------------------
-    # AGM Postulate Tests
-    # ---------------------------------------------------------------
     separator("AGM POSTULATE TESTS")
 
-    # Test with original bb, revising by ~p
-    # Equivalent formula: ~~p <-> ~p? No — use a syntactically different but
-    # logically equivalent formula: ~p <-> (p -> False)
-    # We'll use: ~~(~p) which should be equivalent to ~p
     run_all_tests(bb, parse("~p"), formula_eq=parse("~(~~p)"))
 
     separator()

@@ -1,25 +1,7 @@
-"""
-Propositional logic formula representation and parser.
-
-Supported syntax:
-  ~p          negation
-  p & q       conjunction (AND)
-  p | q       disjunction (OR)
-  p -> q      implication
-  p <-> q     biconditional
-  (p & q)     parentheses for grouping
-
-Operator precedence (lowest to highest):
-  <->  ->  |  &  ~
-"""
-
 from __future__ import annotations
-from typing import FrozenSet, Set
+from typing import Set
 
-
-# ---------------------------------------------------------------------------
 # Formula AST
-# ---------------------------------------------------------------------------
 
 class Formula:
     def __eq__(self, other):
@@ -54,7 +36,7 @@ class Atom(Formula):
 
 class Not(Formula):
     def __new__(cls, sub: Formula):
-        # Eliminate double negation: ~~p → p
+        # Eliminate double negation: ~~p -> p
         if isinstance(sub, Not):
             return sub.sub
         return super().__new__(cls)
@@ -142,17 +124,8 @@ class Biconditional(Formula):
         return self.left.atoms() | self.right.atoms()
 
 
-# ---------------------------------------------------------------------------
-# Parser  (recursive descent)
-# ---------------------------------------------------------------------------
-# Grammar:
-#   expr      ::= biconditional
-#   bicond    ::= implication ('<->' implication)*
-#   implication ::= disjunction ('->' implication)?   (right-assoc)
-#   disjunction ::= conjunction ('|' conjunction)*
-#   conjunction ::= negation ('&' negation)*
-#   negation  ::= '~' negation | atom
-#   atom      ::= NAME | '(' expr ')'
+# Parser (recursive descent)
+# Precedence (lowest -> highest): <->  ->  |  &  ~
 
 class _Tokenizer:
     def __init__(self, text: str):

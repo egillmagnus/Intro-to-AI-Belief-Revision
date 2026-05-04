@@ -1,4 +1,3 @@
-"""Entry point for running AGM postulate tests without the RuntimeWarning."""
 from belief_revision.agm_tests import *  # noqa: F401,F403
 
 from belief_revision.formula import parse
